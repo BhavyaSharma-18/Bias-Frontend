@@ -1,32 +1,22 @@
 import React, { useState } from 'react';
 import './App.css';
 
-import { Activity, RefreshCw, FileText, ChevronRight, Cpu, Info, ShieldCheck } from 'lucide-react';
+import { Activity, RefreshCw, FileText, ChevronRight, Cpu, ShieldCheck } from 'lucide-react';
 
 import UploadPanel   from './components/UploadPanel';
 import ColumnSelector from './components/ColumnSelector';
-import MetricCard    from './components/MetricCard';
-import BiasChart     from './components/BiasChart';
-import ProxyWarning  from './components/ProxyWarning';
+import ResultsSummary          from './components/ResultsSummary';
+import VerdictBanner           from './components/VerdictBanner';
+import DisparateImpactExplainer from './components/DisparateImpactExplainer';
+import ParityExplainer         from './components/ParityExplainer';
+import RepresentationChart     from './components/RepresentationChart';
+import ProxyExplainer          from './components/ProxyExplainer';
 
 import { runAudit, fixBias } from './api/client';
 
 /* ─────────────────────────────────────────────────────────────────────────
    Helpers
    ───────────────────────────────────────────────────────────────────────── */
-
-/** Map the backend's "verdict" string to MetricCard's status key */
-const verdictToStatus = (verdict) => {
-  if (!verdict) return 'danger';
-  const v = verdict.toUpperCase();
-  if (v === 'GREEN')  return 'GREEN';
-  if (v === 'YELLOW') return 'YELLOW';
-  return 'RED';
-};
-
-/** Compute Statistical Parity verdict from the raw value */
-const spVerdict = (val) =>
-  typeof val === 'number' && Math.abs(val) < 0.1 ? 'GREEN' : 'RED';
 
 /** True if any metric is in danger/red */
 const hasBias = (results) => {
@@ -235,70 +225,64 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Proxy Variables */}
-              <ProxyWarning proxyVariables={results.proxy_variables} />
-
-              {/* Metric Cards */}
-              <div className="metrics-grid">
-                <MetricCard
-                  label="Disparate Impact"
-                  value={results.disparate_impact}
-                  verdict={verdictToStatus(results.verdict)}
+              {/* 1. Narrative summary */}
+              <section style={{ marginBottom: 32 }}>
+                <ResultsSummary
+                  disparate_impact={results.disparate_impact}
+                  statistical_parity_difference={results.statistical_parity_difference}
+                  group_representation={results.group_representation}
+                  proxy_variables={results.proxy_variables}
+                  verdict={results.verdict}
+                  outcome_col={selectedCols.outcome_col}
+                  protected_attr={selectedCols.protected_attr}
                 />
-                <MetricCard
-                  label="Statistical Parity Diff"
-                  value={results.statistical_parity_difference}
-                  verdict={spVerdict(results.statistical_parity_difference)}
+              </section>
+
+              {/* 2. Verdict Banner */}
+              <section style={{ marginBottom: 32 }}>
+                <VerdictBanner
+                  verdict={results.verdict}
+                  disparate_impact={results.disparate_impact}
+                  protected_attr={selectedCols.protected_attr}
+                  outcome_col={selectedCols.outcome_col}
                 />
-                <MetricCard
-                  label="Overall Verdict"
-                  value={results.verdict ?? '—'}
-                  verdict={verdictToStatus(results.verdict)}
+              </section>
+
+              {/* 3. Disparate Impact deep dive */}
+              <section style={{ marginBottom: 32 }}>
+                <DisparateImpactExplainer
+                  disparate_impact={results.disparate_impact}
+                  protected_attr={selectedCols.protected_attr}
+                  outcome_col={selectedCols.outcome_col}
+                  group_representation={results.group_representation}
                 />
-              </div>
+              </section>
 
-              {/* Chart */}
-              <BiasChart groupRepresentation={results.group_representation} />
+              {/* 4. Statistical Parity deep dive */}
+              <section style={{ marginBottom: 32 }}>
+                <ParityExplainer
+                  statistical_parity_difference={results.statistical_parity_difference}
+                  protected_attr={selectedCols.protected_attr}
+                />
+              </section>
 
-              {/* Recommendations */}
-              <div className="card recs-card">
-                <div className="recs-card__header">
-                  <Info />
-                  <h3 className="recs-card__title">Recommended Actions</h3>
-                </div>
-                <ul className="recs-list">
-                  {results.proxy_variables && Object.keys(results.proxy_variables).length > 0 && (
-                    <li>
-                      Remove or reweigh the identified proxy variables (
-                      <strong>{Object.keys(results.proxy_variables).join(', ')}</strong>
-                      ) before retraining the model to eliminate indirect bias.
-                    </li>
-                  )}
-                  {typeof results.disparate_impact === 'number' && results.disparate_impact < 0.8 && (
-                    <li>
-                      The Disparate Impact score (<strong>{results.disparate_impact.toFixed(4)}</strong>)
-                      is below the standard 0.8 threshold — this signals potential discrimination
-                      against the unprivileged group.
-                    </li>
-                  )}
-                  {typeof results.statistical_parity_difference === 'number' &&
-                    Math.abs(results.statistical_parity_difference) >= 0.1 && (
-                    <li>
-                      The Statistical Parity Difference (
-                      <strong>{results.statistical_parity_difference.toFixed(4)}</strong>
-                      ) exceeds the ±0.1 fairness threshold. Consider rebalancing
-                      selection rates across groups.
-                    </li>
-                  )}
-                  <li>
-                    Apply bias mitigation techniques such as{' '}
-                    <strong>Reweighing</strong> or <strong>Adversarial Debiasing</strong>{' '}
-                    to produce a fairer model outcome.
-                  </li>
-                </ul>
-              </div>
+              {/* 5. Group Representation chart */}
+              <section style={{ marginBottom: 32 }}>
+                <RepresentationChart
+                  group_representation={results.group_representation}
+                  protected_attr={selectedCols.protected_attr}
+                />
+              </section>
 
-              {/* Fix Bias / Mitigation */}
+              {/* 6. Proxy Variables */}
+              <section style={{ marginBottom: 32 }}>
+                <ProxyExplainer
+                  proxy_variables={results.proxy_variables}
+                  protected_attr={selectedCols.protected_attr}
+                />
+              </section>
+
+              {/* 7. Fix Bias / Mitigation */}
               {!fixed ? (
                 <div className="card fix-card">
                   <div className="fix-card__header">
@@ -333,7 +317,6 @@ export default function App() {
                   )}
                 </div>
               ) : (
-                /* Fixed success state */
                 <div className="fixed-success animate-fade-in-up">
                   <div className="fixed-success__icon">✓</div>
                   <div>

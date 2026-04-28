@@ -1,70 +1,77 @@
 import React from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ReferenceLine, ResponsiveContainer, Cell,
+  Tooltip, Legend, ResponsiveContainer, ReferenceLine, Cell,
 } from 'recharts';
+import { BarChart3 } from 'lucide-react';
 
-const INDIGO = '#6366f1';
-
-const CustomTooltip = ({ active, payload, label }) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="chart-tooltip">
-        <p className="chart-tooltip-label">Group: <strong>{label}</strong></p>
-        <p className="chart-tooltip-value">{payload[0].value.toFixed(1)}%</p>
-      </div>
-    );
-  }
-  return null;
+const CUSTOM_TOOLTIP = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="chart-tooltip">
+      <p className="chart-tooltip__label">{label}</p>
+      {payload.map((p) => (
+        <p key={p.name} style={{ color: p.fill, fontWeight: 600, fontSize: '.88rem' }}>
+          {p.name}: {p.value.toFixed(1)}%
+        </p>
+      ))}
+    </div>
+  );
 };
 
 const BiasChart = ({ groupRepresentation }) => {
   if (!groupRepresentation) return null;
 
   const data = Object.entries(groupRepresentation).map(([group, pct]) => ({
-    group,
-    percentage: parseFloat((pct * 100).toFixed(2)),
+    group: `Group ${group}`,
+    'Representation (%)': parseFloat((pct * 100).toFixed(2)),
   }));
 
   return (
-    <div className="chart-card">
-      <div className="chart-header">
-        <h3 className="chart-title">Group Representation</h3>
-        <div className="chart-legend">
-          <span className="legend-dot" style={{ background: INDIGO }} />
-          <span>Representation %</span>
-          <span className="legend-dot" style={{ background: '#ef4444', borderRadius: 0, height: 2 }} />
-          <span>Equal (50%)</span>
-        </div>
+    <div className="card chart-card">
+      <div className="chart-card__header">
+        <BarChart3 />
+        <h3 className="chart-card__title">Outcome Disparities by Group</h3>
       </div>
 
-      <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+      <ResponsiveContainer width="100%" height={320}>
+        <BarChart data={data} margin={{ top: 16, right: 24, left: 0, bottom: 8 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
           <XAxis
             dataKey="group"
-            tick={{ fill: '#6b7280', fontSize: 13 }}
-            axisLine={{ stroke: '#e5e7eb' }}
+            stroke="#94a3b8"
+            tick={{ fill: '#94a3b8', fontSize: 13 }}
             tickLine={false}
+            axisLine={{ stroke: '#334155' }}
           />
           <YAxis
-            unit="%"
             domain={[0, 100]}
-            tick={{ fill: '#6b7280', fontSize: 12 }}
-            axisLine={false}
+            stroke="#94a3b8"
+            tick={{ fill: '#94a3b8', fontSize: 12 }}
             tickLine={false}
+            axisLine={false}
+            unit="%"
           />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(99,102,241,0.06)' }} />
+          <Tooltip
+            content={<CUSTOM_TOOLTIP />}
+            cursor={{ fill: 'rgba(30,41,59,.6)' }}
+          />
+          <Legend
+            wrapperStyle={{ paddingTop: 20, fontSize: '0.82rem', color: '#94a3b8' }}
+          />
           <ReferenceLine
             y={50}
-            stroke="#ef4444"
+            stroke="#f43f5e"
             strokeDasharray="5 5"
             strokeWidth={2}
-            label={{ value: '50%', position: 'insideTopRight', fill: '#ef4444', fontSize: 12 }}
+            label={{ value: 'Equal (50%)', position: 'insideTopRight', fill: '#f43f5e', fontSize: 12 }}
           />
-          <Bar dataKey="percentage" radius={[6, 6, 0, 0]}>
-            {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={INDIGO} />
+          <Bar
+            dataKey="Representation (%)"
+            radius={[6, 6, 0, 0]}
+          >
+            {data.map((_, i) => (
+              <Cell key={i} fill={i % 2 === 0 ? '#6366f1' : '#10b981'} />
             ))}
           </Bar>
         </BarChart>

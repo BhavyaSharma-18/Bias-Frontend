@@ -1,48 +1,34 @@
 import React from 'react';
+import { CheckCircle2, AlertTriangle, ShieldAlert } from 'lucide-react';
 
-const VERDICT_COLORS = {
-  GREEN: '#22c55e',
-  YELLOW: '#eab308',
-  RED: '#ef4444',
-};
-
-const VERDICT_BG = {
-  GREEN: 'rgba(34,197,94,0.1)',
-  YELLOW: 'rgba(234,179,8,0.1)',
-  RED: 'rgba(239,68,68,0.1)',
-};
-
-const VERDICT_LABELS = {
-  GREEN: 'Passed',
-  YELLOW: 'Caution',
-  RED: 'Biased',
+const STATUS_MAP = {
+  GREEN:  { cls: 'good',   Icon: CheckCircle2  },
+  YELLOW: { cls: 'warn',   Icon: AlertTriangle  },
+  RED:    { cls: 'danger', Icon: ShieldAlert    },
+  // also accept lowercase aliases from the template's format
+  good:    { cls: 'good',   Icon: CheckCircle2  },
+  warning: { cls: 'warn',   Icon: AlertTriangle  },
+  danger:  { cls: 'danger', Icon: ShieldAlert    },
 };
 
 const MetricCard = ({ label, value, verdict }) => {
-  const color = VERDICT_COLORS[verdict] || '#6b7280';
-  const bg = VERDICT_BG[verdict] || 'rgba(107,114,128,0.1)';
-  const displayVal = typeof value === 'number' ? value.toFixed(4) : String(value ?? '—');
+  const mapped = STATUS_MAP[verdict] || STATUS_MAP['danger'];
+  const { cls, Icon } = mapped;
+
+  const displayVal = typeof value === 'number'
+    ? (value > 0 ? '+' : '') + value.toFixed(4)
+    : String(value ?? '—');
 
   return (
-    <div
-      className="metric-card"
-      style={{
-        borderColor: color,
-        background: `linear-gradient(135deg, #ffffff 0%, ${bg} 100%)`,
-      }}
-    >
-      <p className="metric-label">{label}</p>
+    <div className={`metric-card metric-card--${cls}`}>
+      <div className="metric-card__top">
+        <p className="metric-card__title">{label}</p>
+        <Icon className="metric-card__icon" />
+      </div>
 
-      <p className="metric-value" style={{ color }}>
-        {displayVal}
-      </p>
+      <p className="metric-card__value">{displayVal}</p>
 
-      <span
-        className="metric-badge"
-        style={{ backgroundColor: bg, color, border: `1px solid ${color}` }}
-      >
-        {VERDICT_LABELS[verdict] || verdict}
-      </span>
+      <div className="metric-card__blob" aria-hidden="true" />
     </div>
   );
 };

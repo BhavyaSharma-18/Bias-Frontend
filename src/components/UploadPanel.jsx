@@ -1,14 +1,15 @@
 import React, { useState, useRef } from 'react';
+import { UploadCloud } from 'lucide-react';
 import { uploadFile } from '../api/client';
 
 const UploadPanel = ({ onUpload }) => {
-  const [dragging, setDragging] = useState(false);
+  const [dragging, setDragging]   = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState(null);
-  const [fileName, setFileName] = useState(null);
+  const [fileName, setFileName]   = useState(null);
+  const [error, setError]         = useState(null);
   const inputRef = useRef(null);
 
-  const handleFile = async (file) => {
+  const processFile = async (file) => {
     if (!file) return;
     const ext = file.name.split('.').pop().toLowerCase();
     if (!['csv', 'json'].includes(ext)) {
@@ -20,36 +21,38 @@ const UploadPanel = ({ onUpload }) => {
     setUploading(true);
     try {
       const data = await uploadFile(file);
-      onUpload(data);
+      onUpload(data, file.name);
     } catch (err) {
       setError(err?.response?.data?.detail || 'Upload failed. Please try again.');
+      setFileName(null);
     } finally {
       setUploading(false);
     }
   };
 
-  const onDragOver = (e) => { e.preventDefault(); setDragging(true); };
-  const onDragLeave = () => setDragging(false);
-  const onDrop = (e) => {
-    e.preventDefault();
-    setDragging(false);
-    const file = e.dataTransfer.files[0];
-    handleFile(file);
-  };
-  const onFileChange = (e) => handleFile(e.target.files[0]);
+  const onDragOver  = (e) => { e.preventDefault(); setDragging(true);  };
+  const onDragLeave = ()  => setDragging(false);
+  const onDrop      = (e) => { e.preventDefault(); setDragging(false); processFile(e.dataTransfer.files[0]); };
+  const onFileChange = (e) => processFile(e.target.files[0]);
+
+  const dropzoneClass = [
+    'upload-dropzone',
+    dragging  ? 'dragging'  : '',
+    uploading ? 'uploading' : '',
+  ].join(' ');
 
   return (
-    <div className="upload-panel-wrapper">
+    <div className="card upload-card">
       <div
-        className={`upload-zone ${dragging ? 'dragging' : ''} ${uploading ? 'uploading' : ''}`}
+        className={dropzoneClass}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         onClick={() => !uploading && inputRef.current.click()}
+        onKeyDown={(e) => e.key === 'Enter' && !uploading && inputRef.current.click()}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && !uploading && inputRef.current.click()}
-        aria-label="Upload CSV or JSON file"
+        aria-label="Upload CSV or JSON dataset"
       >
         <input
           ref={inputRef}
@@ -59,35 +62,46 @@ const UploadPanel = ({ onUpload }) => {
           onChange={onFileChange}
         />
 
-        <div className="upload-icon-wrap">
-          <svg className="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path strokeLinecap="round" strokeLinejoin="round"
-              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-          </svg>
-        </div>
-
         {uploading ? (
-          <div className="upload-uploading">
-            <div className="spinner" />
+          <div className="upload-uploading-state">
+            <div className="inline-spinner" />
             <span>Processing <strong>{fileName}</strong>…</span>
           </div>
         ) : fileName ? (
-          <div className="upload-success">
-            <span className="checkmark">✓</span>
-            <span><strong>{fileName}</strong> uploaded — drop another to replace</span>
+          <div className="upload-success-state">
+            <span className="success-ring">✓</span>
+            <span><strong>{fileName}</strong> — drop another file to replace</span>
           </div>
         ) : (
           <>
-            <p className="upload-main-text">
-              {dragging ? 'Drop your file here' : 'Drag & drop your dataset'}
+            <div className="upload-icon-ring animate-bounce-slow">
+              <UploadCloud />
+            </div>
+            <p className="upload-title">
+              {dragging ? 'Release to upload' : 'Upload Dataset'}
             </p>
-            <p className="upload-sub-text">or <span className="upload-browse">browse to upload</span></p>
-            <p className="upload-formats">Supported: <strong>.csv</strong> · <strong>.json</strong></p>
+            <p className="upload-desc">
+              Drag and drop your CSV or JSON file here to begin bias analysis.
+              We automatically detect features and potential target variables.
+            </p>
+            <label
+              className="btn-browse"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Browse Files
+              <input
+                type="file"
+                style={{ display: 'none' }}
+                accept=".csv,.json"
+                onChange={onFileChange}
+              />
+            </label>
+            <p className="upload-formats">Supported formats: <strong>.csv</strong> · <strong>.json</strong></p>
           </>
         )}
       </div>
 
-      {error && <p className="upload-error">⚠ {error}</p>}
+      {error && <p className="upload-error-msg">⚠ {error}</p>}
     </div>
   );
 };

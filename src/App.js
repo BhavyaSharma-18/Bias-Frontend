@@ -1,35 +1,77 @@
 import React, { useState } from 'react';
 import './App.css';
-import UploadPanel from './components/UploadPanel';
+
+import { Activity, RefreshCw, FileText, ChevronRight, Cpu, Info, ShieldCheck } from 'lucide-react';
+
+import UploadPanel   from './components/UploadPanel';
 import ColumnSelector from './components/ColumnSelector';
-import MetricCard from './components/MetricCard';
-import BiasChart from './components/BiasChart';
-import ProxyWarning from './components/ProxyWarning';
+import MetricCard    from './components/MetricCard';
+import BiasChart     from './components/BiasChart';
+import ProxyWarning  from './components/ProxyWarning';
+
 import { runAudit, fixBias } from './api/client';
 
-function App() {
-  const [uploadData, setUploadData] = useState(null);
-  const [results, setResults] = useState(null);
-  const [fixed, setFixed] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [auditError, setAuditError] = useState(null);
-  const [fixError, setFixError] = useState(null);
-  const [fixing, setFixing] = useState(false);
+/* ─────────────────────────────────────────────────────────────────────────
+   Helpers
+   ───────────────────────────────────────────────────────────────────────── */
 
-  // Track selected columns so we can reuse them for fixBias
+/** Map the backend's "verdict" string to MetricCard's status key */
+const verdictToStatus = (verdict) => {
+  if (!verdict) return 'danger';
+  const v = verdict.toUpperCase();
+  if (v === 'GREEN')  return 'GREEN';
+  if (v === 'YELLOW') return 'YELLOW';
+  return 'RED';
+};
+
+/** Compute Statistical Parity verdict from the raw value */
+const spVerdict = (val) =>
+  typeof val === 'number' && Math.abs(val) < 0.1 ? 'GREEN' : 'RED';
+
+/** True if any metric is in danger/red */
+const hasBias = (results) => {
+  if (!results) return false;
+  return (
+    results.verdict === 'RED' ||
+    (typeof results.statistical_parity_difference === 'number' &&
+      Math.abs(results.statistical_parity_difference) >= 0.1)
+  );
+};
+
+const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+
+/* ─────────────────────────────────────────────────────────────────────────
+   App
+   ───────────────────────────────────────────────────────────────────────── */
+
+export default function App() {
+  // Steps: 1 = Upload  2 = Configure  3 = Analyzing  4 = Results
+  const [step, setStep]           = useState(1);
+  const [uploadData, setUploadData] = useState(null);
+  const [fileName, setFileName]   = useState('');
+  const [results, setResults]     = useState(null);
+  const [auditError, setAuditError] = useState(null);
+  const [fixed, setFixed]         = useState(false);
+  const [fixing, setFixing]       = useState(false);
+  const [fixError, setFixError]   = useState(null);
   const [selectedCols, setSelectedCols] = useState({ outcome_col: '', protected_attr: '' });
 
-  const handleUpload = (data) => {
+  /* ── Handlers ─────────────────────────────────────────────────────────── */
+
+  const handleUpload = (data, name) => {
     setUploadData(data);
+    setFileName(name || 'dataset');
     setResults(null);
     setFixed(false);
     setAuditError(null);
     setFixError(null);
     setSelectedCols({ outcome_col: '', protected_attr: '' });
+    // Small delay for snappy feel before advancing
+    setTimeout(() => setStep(2), 400);
   };
 
   const handleAuditSubmit = async (outcome_col, protected_attr) => {
-    setLoading(true);
+    setStep(3);
     setAuditError(null);
     setResults(null);
     setFixed(false);
@@ -37,10 +79,13 @@ function App() {
     try {
       const data = await runAudit(outcome_col, protected_attr);
       setResults(data);
+      setStep(4);
     } catch (err) {
-      setAuditError(err?.response?.data?.detail || 'Audit failed. Please check your selections and try again.');
-    } finally {
-      setLoading(false);
+      setAuditError(
+        err?.response?.data?.detail ||
+        'Audit failed. Please check your column selections and try again.'
+      );
+      setStep(2);   // bounce back so user can retry
     }
   };
 
@@ -51,171 +96,274 @@ function App() {
       await fixBias(selectedCols.outcome_col, selectedCols.protected_attr);
       setFixed(true);
     } catch (err) {
-      setFixError(err?.response?.data?.detail || 'Bias mitigation failed. Please try again.');
+      setFixError(
+        err?.response?.data?.detail ||
+        'Bias mitigation failed. Please try again.'
+      );
     } finally {
       setFixing(false);
     }
   };
 
-  const spVerdict = results
-    ? Math.abs(results.statistical_parity_difference) < 0.1 ? 'GREEN' : 'RED'
-    : null;
+  const reset = () => {
+    setStep(1);
+    setUploadData(null);
+    setFileName('');
+    setResults(null);
+    setFixed(false);
+    setAuditError(null);
+    setFixError(null);
+    setSelectedCols({ outcome_col: '', protected_attr: '' });
+  };
 
-  const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+  /* ── Derived ──────────────────────────────────────────────────────────── */
+
+  const biasDetected = hasBias(results);
+
+  /* ── Render ───────────────────────────────────────────────────────────── */
 
   return (
-    <div className="app-root">
-      {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header className="app-header">
-        <div className="header-glow" />
-        <div className="header-content">
-          <div className="header-badge">
-            <span role="img" aria-label="scales">⚖️</span>
-          </div>
-          <div>
-            <h1 className="app-title">AI Bias Auditor</h1>
-            <p className="app-subtitle">
-              Detect, visualise & mitigate algorithmic bias in your datasets
-            </p>
-          </div>
-        </div>
-        <div className="header-chips">
-          <span className="chip">Disparate Impact</span>
-          <span className="chip">Statistical Parity</span>
-          <span className="chip">Reweighing Mitigation</span>
-        </div>
-      </header>
+    <>
+      {/* Fixed full-screen glow blobs */}
+      <div className="bg-ornament" aria-hidden="true">
+        <div className="bg-ornament__blob bg-ornament__blob--tl" />
+        <div className="bg-ornament__blob bg-ornament__blob--br" />
+      </div>
 
-      <main className="app-main">
-        {/* ── Step 1: Upload ──────────────────────────────────────────── */}
-        <section className="step-section">
-          <div className="step-label">
-            <span className="step-number">1</span>
-            <span>Upload Dataset</span>
-          </div>
-          <UploadPanel onUpload={handleUpload} />
-        </section>
+      <div className="app-shell">
 
-        {/* ── Step 2: Configure ───────────────────────────────────────── */}
-        {uploadData && (
-          <section className="step-section animate-in">
-            <div className="step-label">
-              <span className="step-number">2</span>
-              <span>Configure Audit</span>
+        {/* ── Header ──────────────────────────────────────────────────── */}
+        <header className="app-header">
+          <div className="header-brand">
+            <div className="header-logo">
+              <Activity />
             </div>
-            <ColumnSelector
-              columns={uploadData.columns || []}
-              onSubmit={handleAuditSubmit}
-            />
-          </section>
-        )}
-
-        {/* ── Audit Loading ────────────────────────────────────────────── */}
-        {loading && (
-          <div className="loading-bar-wrap animate-in">
-            <div className="loading-bar">
-              <div className="loading-bar-fill" />
+            <div>
+              <p className="header-app-name">BiasLens</p>
+              <p className="header-app-sub">Algorithmic Fairness Dashboard</p>
             </div>
-            <p className="loading-text">Running bias audit…</p>
           </div>
-        )}
 
-        {/* ── Audit Error ──────────────────────────────────────────────── */}
-        {auditError && (
-          <div className="alert alert-error animate-in">
-            <span>⚠ {auditError}</span>
-          </div>
-        )}
+          {step > 1 && (
+            <button className="btn-reset" onClick={reset} id="start-over-btn">
+              <RefreshCw /> Start Over
+            </button>
+          )}
+        </header>
 
-        {/* ── Step 3: Results ─────────────────────────────────────────── */}
-        {results && (
-          <section className="step-section animate-in">
-            <div className="step-label">
-              <span className="step-number">3</span>
-              <span>Audit Results</span>
-            </div>
+        {/* ── Main ────────────────────────────────────────────────────── */}
+        <main>
 
-            <h2 className="results-heading">Bias Metrics</h2>
-
-            <div className="metrics-grid">
-              <MetricCard
-                label="Disparate Impact"
-                value={results.disparate_impact}
-                verdict={results.verdict}
-              />
-              <MetricCard
-                label="Statistical Parity Diff"
-                value={results.statistical_parity_difference}
-                verdict={spVerdict}
-              />
-            </div>
-
-            <BiasChart groupRepresentation={results.group_representation} />
-
-            <ProxyWarning proxyVariables={results.proxy_variables} />
-
-            {/* ── Fix Bias Button ──────────────────────────────────────── */}
-            {!fixed && (
-              <div className="fix-section">
-                <p className="fix-description">
-                  Apply <strong>Reweighing</strong> — a pre-processing bias mitigation
-                  technique that assigns instance weights to balance representation across groups.
+          {/* ── STEP 1: Upload ──────────────────────────────────────── */}
+          {step === 1 && (
+            <div className="animate-fade-in-up" style={{ maxWidth: 700, margin: '0 auto' }}>
+              <div className="step-hero">
+                <h2 className="step-hero__title">Uncover Hidden&nbsp;Biases<br />in Your Data</h2>
+                <p className="step-hero__sub">
+                  Upload your dataset to automatically evaluate statistical parity,
+                  disparate impact, and discover proxy variables that may skew your model.
                 </p>
-                <button
-                  className="btn-fix"
-                  onClick={handleFixBias}
-                  disabled={fixing}
-                  id="fix-bias-btn"
-                >
-                  {fixing ? (
-                    <>
-                      <div className="spinner spinner-white" />
-                      Applying Reweighing…
-                    </>
-                  ) : (
-                    <>
-                      <span role="img" aria-label="magic">✨</span>
-                      Fix Bias (Reweighing)
-                    </>
-                  )}
-                </button>
-                {fixError && (
-                  <div className="alert alert-error" style={{ marginTop: '12px' }}>
-                    ⚠ {fixError}
-                  </div>
-                )}
               </div>
-            )}
+              <UploadPanel onUpload={handleUpload} />
+            </div>
+          )}
 
-            {/* ── Fixed Success ───────────────────────────────────────── */}
-            {fixed && (
-              <div className="fixed-success animate-in">
-                <div className="fixed-icon">✓</div>
+          {/* ── STEP 2: Configure ───────────────────────────────────── */}
+          {step === 2 && (
+            <div className="animate-fade-in-up" style={{ maxWidth: 860, margin: '0 auto' }}>
+              {/* Breadcrumb */}
+              <div className="breadcrumb">
+                <span className="breadcrumb__file">
+                  <FileText />
+                  {fileName}
+                </span>
+                <ChevronRight />
+                <span className="breadcrumb__active">Configure Variables</span>
+              </div>
+
+              <ColumnSelector
+                columns={uploadData?.columns || []}
+                onSubmit={handleAuditSubmit}
+              />
+
+              {/* Audit error shown below the form */}
+              {auditError && (
+                <div className="upload-error-msg" style={{ marginTop: 16 }}>
+                  ⚠ {auditError}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── STEP 3: Analyzing ───────────────────────────────────── */}
+          {step === 3 && (
+            <div className="analyzing-wrap animate-fade-in-up">
+              <div className="spinner-ring-wrap">
+                <div className="spinner-ring" />
+                <div className="spinner-ring--active" />
+                <Cpu className="spinner-cpu" />
+              </div>
+              <h3 className="analyzing-title">Analyzing Dataset</h3>
+              <p className="analyzing-sub">
+                Calculating fairness metrics and scanning for proxy variables…
+              </p>
+              <div className="loading-bar-outer">
+                <div className="loading-bar-inner" />
+              </div>
+            </div>
+          )}
+
+          {/* ── STEP 4: Results ─────────────────────────────────────── */}
+          {step === 4 && results && (
+            <div className="animate-fade-in-up">
+
+              {/* Results header */}
+              <div className="results-header">
                 <div>
-                  <h3 className="fixed-title">Bias Mitigation Applied!</h3>
-                  <p className="fixed-desc">
-                    The reweighed dataset is ready. Download it below.
+                  <h2 className="results-header__title">Fairness Report</h2>
+                  <p className="results-header__sub">
+                    Analysis complete for <strong style={{ color: '#e2e8f0' }}>{fileName}</strong>.
+                    Review the metrics below.
                   </p>
-                  <a
-                    href={`${BASE_URL}/download-fixed`}
-                    className="btn-download"
-                    download
-                    id="download-fixed-link"
-                  >
-                    ⬇ Download Fixed Dataset
-                  </a>
+                </div>
+                <div className="status-badge">
+                  Status:{' '}
+                  {biasDetected
+                    ? <span className="status-badge--biased">Bias Detected</span>
+                    : <span className="status-badge--clean">Looks Fair</span>
+                  }
                 </div>
               </div>
-            )}
-          </section>
-        )}
-      </main>
 
-      <footer className="app-footer">
-        <p>AI Bias Auditor · Powered by AIF360 &amp; React</p>
-      </footer>
-    </div>
+              {/* Proxy Variables */}
+              <ProxyWarning proxyVariables={results.proxy_variables} />
+
+              {/* Metric Cards */}
+              <div className="metrics-grid">
+                <MetricCard
+                  label="Disparate Impact"
+                  value={results.disparate_impact}
+                  verdict={verdictToStatus(results.verdict)}
+                />
+                <MetricCard
+                  label="Statistical Parity Diff"
+                  value={results.statistical_parity_difference}
+                  verdict={spVerdict(results.statistical_parity_difference)}
+                />
+                <MetricCard
+                  label="Overall Verdict"
+                  value={results.verdict ?? '—'}
+                  verdict={verdictToStatus(results.verdict)}
+                />
+              </div>
+
+              {/* Chart */}
+              <BiasChart groupRepresentation={results.group_representation} />
+
+              {/* Recommendations */}
+              <div className="card recs-card">
+                <div className="recs-card__header">
+                  <Info />
+                  <h3 className="recs-card__title">Recommended Actions</h3>
+                </div>
+                <ul className="recs-list">
+                  {results.proxy_variables && Object.keys(results.proxy_variables).length > 0 && (
+                    <li>
+                      Remove or reweigh the identified proxy variables (
+                      <strong>{Object.keys(results.proxy_variables).join(', ')}</strong>
+                      ) before retraining the model to eliminate indirect bias.
+                    </li>
+                  )}
+                  {typeof results.disparate_impact === 'number' && results.disparate_impact < 0.8 && (
+                    <li>
+                      The Disparate Impact score (<strong>{results.disparate_impact.toFixed(4)}</strong>)
+                      is below the standard 0.8 threshold — this signals potential discrimination
+                      against the unprivileged group.
+                    </li>
+                  )}
+                  {typeof results.statistical_parity_difference === 'number' &&
+                    Math.abs(results.statistical_parity_difference) >= 0.1 && (
+                    <li>
+                      The Statistical Parity Difference (
+                      <strong>{results.statistical_parity_difference.toFixed(4)}</strong>
+                      ) exceeds the ±0.1 fairness threshold. Consider rebalancing
+                      selection rates across groups.
+                    </li>
+                  )}
+                  <li>
+                    Apply bias mitigation techniques such as{' '}
+                    <strong>Reweighing</strong> or <strong>Adversarial Debiasing</strong>{' '}
+                    to produce a fairer model outcome.
+                  </li>
+                </ul>
+              </div>
+
+              {/* Fix Bias / Mitigation */}
+              {!fixed ? (
+                <div className="card fix-card">
+                  <div className="fix-card__header">
+                    <ShieldCheck />
+                    <h3 className="fix-card__title">Apply Bias Mitigation</h3>
+                  </div>
+                  <p className="fix-card__desc">
+                    <strong>Reweighing</strong> is a pre-processing technique that assigns
+                    instance weights to balance representation across demographic groups —
+                    without altering any labels or predictions.
+                  </p>
+                  <button
+                    className="btn-fix"
+                    onClick={handleFixBias}
+                    disabled={fixing}
+                    id="fix-bias-btn"
+                  >
+                    {fixing ? (
+                      <>
+                        <div className="inline-spinner" />
+                        Applying Reweighing…
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck />
+                        Fix Bias (Reweighing)
+                      </>
+                    )}
+                  </button>
+                  {fixError && (
+                    <p className="fix-error">⚠ {fixError}</p>
+                  )}
+                </div>
+              ) : (
+                /* Fixed success state */
+                <div className="fixed-success animate-fade-in-up">
+                  <div className="fixed-success__icon">✓</div>
+                  <div>
+                    <h3 className="fixed-success__title">Bias Mitigation Applied!</h3>
+                    <p className="fixed-success__desc">
+                      The reweighed dataset is ready. Download it below to use in your pipeline.
+                    </p>
+                    <a
+                      href={`${BASE_URL}/download-fixed`}
+                      className="btn-download"
+                      download
+                      id="download-fixed-link"
+                    >
+                      ⬇ Download Fixed Dataset
+                    </a>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          )}
+
+        </main>
+
+        {/* ── Footer ────────────────────────────────────────────────── */}
+        <footer className="app-footer">
+          BiasLens · Powered by AIF360 &amp; React · Algorithmic Fairness Dashboard
+        </footer>
+
+      </div>
+    </>
   );
 }
-
-export default App;

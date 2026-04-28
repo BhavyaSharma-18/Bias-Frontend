@@ -1,41 +1,43 @@
 import React from 'react';
+import { AlertTriangle } from 'lucide-react';
 
 const ProxyWarning = ({ proxyVariables }) => {
   if (!proxyVariables || Object.keys(proxyVariables).length === 0) return null;
 
+  const entries = Object.entries(proxyVariables);
+
   return (
-    <div className="proxy-warning">
-      <div className="proxy-header">
-        <span className="proxy-icon">⚠️</span>
-        <div>
-          <h4 className="proxy-title">Proxy Variables Detected</h4>
-          <p className="proxy-subtitle">
-            The following columns are highly correlated with your protected attribute and may
-            act as stand-ins for it, introducing indirect bias even when the protected column
-            is excluded from the model.
+    <div className="proxy-warning animate-pulse-slow">
+      <div className="proxy-warning__inner">
+        <div className="proxy-warning__icon-ring">
+          <AlertTriangle />
+        </div>
+
+        <div style={{ flex: 1 }}>
+          <h4 className="proxy-warning__title">Proxy Variables Detected</h4>
+          <p className="proxy-warning__desc">
+            The following features strongly correlate with your protected attribute.
+            Including them may introduce hidden bias into your model even if the
+            protected column itself is excluded.
+          </p>
+
+          <div className="proxy-grid">
+            {entries.map(([col, corr]) => (
+              <div key={col} className="proxy-item">
+                <span className="proxy-item__name">{col}</span>
+                <span className="proxy-item__corr">
+                  r = {(Math.abs(corr)).toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <p className="proxy-advice">
+            💡 <strong>Recommendation:</strong> Remove or reweigh these columns before
+            retraining to reduce the risk of indirect discrimination.
           </p>
         </div>
       </div>
-
-      <ul className="proxy-list">
-        {Object.entries(proxyVariables).map(([col, corr]) => (
-          <li key={col} className="proxy-item">
-            <div className="proxy-item-left">
-              <span className="proxy-col-name">{col}</span>
-              <span className="proxy-col-desc">Correlated proxy column</span>
-            </div>
-            <div className="proxy-item-right">
-              <span className="proxy-corr-label">Correlation</span>
-              <span className="proxy-corr-val">{(Math.abs(corr) * 100).toFixed(1)}%</span>
-            </div>
-          </li>
-        ))}
-      </ul>
-
-      <p className="proxy-advice">
-        💡 <strong>Recommendation:</strong> Consider removing or transforming these columns
-        before training your model to reduce the risk of indirect discrimination.
-      </p>
     </div>
   );
 };
